@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>📊 摸鱼数据中心</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body { background-color: #1a1a2e; color: #e0e0e0; font-family: 'Segoe UI', sans-serif; }
+        .card { background-color: #16213e; border-radius: 16px; border: 1px solid #2a3b55; }
+        .glass-effect { background: rgba(255, 255, 255, 0.05); backdrop-filter: blur(10px); }
+        .fade-in { animation: fadeIn 0.5s ease-in; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+</head>
+<body class="h-screen p-6 overflow-hidden flex flex-col">
+
+    <!-- 标题栏 -->
+    <header class="flex justify-between items-center mb-6 px-4">
+        <h1 class="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-pink-500 to-amber-500">
+            <i class="fas fa-chart-line mr-2"></i>全员摸鱼实况监控
+        </h1>
+        <div class="text-right">
+            <p class="text-gray-400 text-sm">Live Data Stream</p>
+            <div class="flex items-center gap-2 text-green-400 text-xs">
+                <span class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span> 实时连接中
+            </div>
+        </div>
+    </header>
+
+    <!-- 核心内容区 -->
+    <div class="flex-1 grid grid-cols-12 gap-6">
+        
+        <!-- 左侧：实时列表 (占4列) -->
+        <div class="col-span-4 flex flex-col gap-4">
+            <!-- 总数卡片 -->
+            <div class="card p-6 text-center bg-gradient-to-br from-purple-900 to-indigo-900 border-none shadow-lg">
+                <p class="text-indigo-200 text-sm uppercase tracking-widest mb-1">今日全员累计</p>
+                <div class="text-6xl font-mono font-bold text-white" id="totalCount">0</div>
+                <p class="text-indigo-300 text-xs mt-2">杯快乐水</p>
+            </div>
+
+            <!-- 最新动态 -->
+            <div class="card flex-1 p-4 overflow-hidden flex flex-col">
+                <h3 class="text-gray-400 text-sm font-bold mb-4 uppercase"><i class="fas fa-history mr-2"></i>最新打卡</h3>
+                <div id="feedList" class="flex-1 overflow-y-auto space-y-3 pr-2">
+                    <!-- 动态列表项 -->
+                </div>
+            </div>
+        </div>
+
+        <!-- 右侧：图表分析 (占8列) -->
+        <div class="col-span-8 flex flex-col gap-6">
+            <!-- 品牌分布图 -->
+            <div class="card p-6 flex-1 relative">
+                <h3 class="text-gray-400 text-sm font-bold mb-2 uppercase absolute top-6 left-6">
+                    <i class="fas fa-pie-chart mr-2"></i>品牌偏好分布
+                </h3>
+                <div class="w-full h-full flex items-center justify-center">
+                    <canvas id="brandChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Firebase Logic -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
+        import { getFirestore, collection, onSnapshot, query, orderBy, limit } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js";
+
+        // ============================================================
+        // 你的配置 (已保留)
+        // ============================================================
+        const firebaseConfig = {
+            apiKey: "AIzaSyDRQOohNRt0UjQD2voZ6gYeozKOy-uvM7E",
+            authDomain: "milktea-demo-9025c.firebaseapp.com",
+            projectId: "milktea-demo-9025c",
+            storageBucket: "milktea-demo-9025c.firebasestorage.app",
+            messagingSenderId: "356695291882",
+            appId: "1:356695291882:web:3e85ca87492ec5b980e493"
+        };
+        // ============================================================
+
+        // Chart.js 实例
+        let chartInstance = null;
+
+        try {
+            const app = initializeApp(firebaseConfig);
+            const db = getFirestore(app);
+            
+            const q = query(collection(db, "records"), orderBy("timestamp", "desc"), limit(50));
+            
+            onSnapshot(q, (snapshot) => {
+                const records = [];
+                snapshot.forEach((doc) => {
+                    records.push(doc.data());
+                });
+
+                updateDashboard(records);
+            });
+
+        } catch (e) {
+            console.error(e);
+            alert("数据库连接失败，请检查配置");
+        }
+
+        function updateDashboard(records) {
+            // 1. 更新总数
+            document.getElementById('totalCount').innerText = records.length;
+
+            // 2. 更新最新列表 (取前10条)
+            const feedList = document.getElementById('feedList');
+            feedList.innerHTML = '';
+            
+            records.slice(0, 10).forEach(rec => {
+                const div = document.createElement('div');
+                div.className = 'glass-effect p-3 rounded-lg flex items-center justify-between fade-in border-l-4 border-pink-500';
+                
+                // 处理没有昵称的老数据
+                const userName = rec.username || "神秘茶友";
+                const timeString = rec.timestamp ? new Date(rec.timestamp.seconds * 1000).toLocaleTimeString() : '刚刚';
+
+                div.innerHTML = `
+                    <div class="flex flex-col">
+                        <div class="text-xs text-indigo-300 font-bold mb-1 flex items-center">
+                            <i class="fas fa-user-circle mr-1"></i> ${userName}
+                        </div>
+                        <div class="flex items-center">
+                            <span class="text-base font-bold mr-2 text-white">${rec.brand.split(' ')[0]}</span>
+                            <span class="text-gray-400 text-xs italic">${rec.mood}</span>
+                        </div>
+                    </div>
+                    <span class="text-xs text-gray-500 ml-2 whitespace-nowrap">${timeString}</span>
+                `;
+                feedList.appendChild(div);
+            });
+
+            // 3. 更新图表
+            updateChart(records);
+        }
+
+        function updateChart(records) {
+            const counts = {};
+            records.forEach(r => {
+                const name = r.brand.split(' ')[0]; 
+                counts[name] = (counts[name] || 0) + 1;
+            });
+
+            const labels = Object.keys(counts);
+            const data = Object.values(counts);
+
+            if (chartInstance) {
+                chartInstance.data.labels = labels;
+                chartInstance.data.datasets[0].data = data;
+                chartInstance.update();
+            } else {
+                const ctx = document.getElementById('brandChart').getContext('2d');
+                chartInstance = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: '打卡数量',
+                            data: data,
+                            backgroundColor: [
+                                'rgba(255, 99, 132, 0.7)',
+                                'rgba(54, 162, 235, 0.7)',
+                                'rgba(255, 206, 86, 0.7)',
+                                'rgba(75, 192, 192, 0.7)',
+                                'rgba(153, 102, 255, 0.7)'
+                            ],
+                            borderColor: 'rgba(255, 255, 255, 0.5)',
+                            borderWidth: 1,
+                            borderRadius: 8
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            y: { beginAtZero: true, grid: { color: '#2a3b55' }, ticks: { color: '#a0aec0' } },
+                            x: { grid: { display: false }, ticks: { color: '#a0aec0', font: {size: 14} } }
+                        }
+                    }
+                });
+            }
+        }
+    </script>
+</body>
+</html>
